@@ -1,87 +1,67 @@
-import React, { useState, useEffect } from 'react';
-import { fetchTrendingGifs, searchGifs } from '@/api-calls';
+import React, { useEffect, useState } from 'react';
 import GifGrid from '@/components/GifGrid';
 import SearchBar from '@/components/SearchBar';
 import Skeleton from '@/components/Skeleton';
-import { Gif } from './store';
+import useGifSearch from '@/use/use-gif-search';
+import { Gif } from '@/store';
+import SavedGifsGrid from '@/components/SavedGifsGrid';
 
 const GiphyApp: React.FC = () => {
-  const [gifs, setGifs] = useState<Gif[]>([]);
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [offset, setOffset] = useState(0);
 
-  const LIMIT = 20;
+  const { gifs, loading, handleSearch, loadMore } = useGifSearch(20);
+
+  const [savedGifs, setSavedGifs] = useState(() => {
+    const saved = localStorage.getItem('savedGifs')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [showSaved, setShowSaved] = useState(false)
 
   useEffect(() => {
-    fetchGifs();
-  }, []);
+    localStorage.setItem('savedGifs', JSON.stringify(savedGifs))
+  }, [savedGifs])
 
-  const fetchGifs = async () => {
-    setLoading(true);
-    try {
-      const response = await fetchTrendingGifs(LIMIT, offset);
-      setGifs(prevGifs => [...prevGifs, ...response.data.data])
-      setOffset(prevOffset => prevOffset + LIMIT)
-    } catch (error) {
-      console.error('Error fetching trending GIFs:', error);
-    } finally {
-      setLoading(false);
-    }
+  const saveGif = (gif: Gif) => {
+    setSavedGifs((prevSaved: Gif[]) => {
+      const isAlreadySaved = prevSaved.some(savedGif => savedGif.id === gif.id);
+      if (isAlreadySaved) {
+        return prevSaved.filter(savedGif => savedGif.id !== gif.id);
+      } else {
+        return [...prevSaved, gif];
+      }
+    });
   };
 
-  const handleSearch = async (searchTerm: string) => {
-    const trimmedSearchTerm = searchTerm.trim()
-    if (!trimmedSearchTerm) return
-
-    setLoading(true);
-    setQuery(trimmedSearchTerm);
-    await search(trimmedSearchTerm, LIMIT, 0)
-  };
-
-  const search = async (query: string, LIMIT: number, offset: number) => {    
-    try {
-      const response = await searchGifs(query, LIMIT, offset);
-      setGifs(response.data.data);
-      setOffset(LIMIT)
-    } catch (error) {
-      console.error('Error searching GIFs:', error);
-    } finally {
-      setLoading(false);
-    }
+  const unSaveGif = (gifId: string) => {
+    setSavedGifs((prevSaved: Gif[]) => prevSaved.filter((gif) => gif.id !== gifId))
   }
 
-  const loadMore = async () => {
-    setLoading(true);
-    try {
-      let response;
-      if (query) {
-        response = await searchGifs(query, LIMIT, offset);
-      } else {
-        response = await fetchTrendingGifs(LIMIT, offset);
-      }
-      setGifs(prevGifs => [...prevGifs, ...response.data.data]);
-      setOffset(prevOffset => prevOffset + LIMIT);
-
-    } catch (error) {
-      console.error('Error loading more GIFs:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const savedGifIds = savedGifs.map((gif: Gif) => gif.id)
+ 
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-4xl font-bold mb-8 text-center">Giphy Search App</h1>
       <SearchBar onSearch={handleSearch} />
-      {loading ? <Skeleton count={LIMIT} /> : <GifGrid gifs={gifs} loading={loading} />}
-      <div className='flex justify-center items-center'>
-      {!loading && (
-        <button onClick={loadMore} className="mt-8 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-          Show More
-        </button>
-      )}
-      </div>
+      <button 
+        onClick={() => setShowSaved(!showSaved)}
+        className="mb-4 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {showSaved ? 'Show Search Results' : 'Show Saved GIFs'}
+      </button>
+      {showSaved 
+        ? <SavedGifsGrid savedGifs={savedGifs} onUnsave={unSaveGif} />
+        : (
+          <>
+            {loading ? <Skeleton count={20} /> : <GifGrid gifs={gifs} loading={loading} onSave={saveGif} savedGifIds={savedGifIds} />}
+            <div className='flex justify-center items-center'>
+              {!loading && (
+                <button onClick={loadMore} className="mt-8 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  Show More
+                </button>
+              )}
+            </div>
+          </>
+        )
+      }
     </div>
   );
 };
